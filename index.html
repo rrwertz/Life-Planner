@@ -314,14 +314,10 @@
     // Watch for login status
     onAuthStateChanged(auth, (user) => {
         if (user) {
-            // User is signed in
             document.getElementById('loginOverlay').style.display = 'none';
             document.getElementById('mainApp').style.display = 'block';
-            
-            // Only start the data sync if we are logged in
             initDB().then(() => startDataSync());
         } else {
-            // User is signed out
             document.getElementById('loginOverlay').style.display = 'flex';
             document.getElementById('mainApp').style.display = 'none';
         }
@@ -330,7 +326,6 @@
     // --- GLOBAL VARS & DEFAULTS ---
     window.activeTaskForModal = null; 
     
-    // DEFAULT PERSONNEL (Prevents blank screen)
     window.PERSONNEL = [
         {id:0, name:"Maxwell", role:"Eng 1", dept:"eng", tasks:[]}, 
         {id:1, name:"Lee", role:"Eng 2", dept:"eng", tasks:[]},
@@ -341,6 +336,7 @@
     ];
     window.SAMPLE_ORDERS = [];
     
+    // Core Engineering Standard Times
     window.DEFAULT_COSTS = {
         "Air Shocks & Struts": { "Comparison": 3, "Engineering Design": 2, "Product Testing": 2 },
         "Air Compressors": { "Comparison": 4, "Engineering Design": 2, "Product Testing": 2 },
@@ -357,10 +353,20 @@
         "O2 Sensors": { "Comparison": 1, "Engineering Design": 1, "Product Testing": 1 },
         "Fuel Injectors": { "Comparison": 1, "Engineering Design": 1, "Product Testing": 1 }
     };
+    
+    // We dynamically inject 1-hr defaults for all quality tasks so bars never break
+    const QUAL_TRACKED_TASKS = ["NAPA Tech Line", "Warranty Claims", "Quarantine", "SOPs", "Quality Issues", "Time Studies", "Quality Alerts", "Recalls"];
+    Object.keys(window.DEFAULT_COSTS).forEach(productKey => {
+        QUAL_TRACKED_TASKS.forEach(qualTask => {
+            if (window.DEFAULT_COSTS[productKey][qualTask] === undefined) {
+                window.DEFAULT_COSTS[productKey][qualTask] = 1; // 1 Hour Default
+            }
+        });
+    });
+
     window.CATEGORY_COSTS = JSON.parse(JSON.stringify(window.DEFAULT_COSTS));
     window.TASK_BREAKDOWNS = {};
 
-    // --- REPAIR TOOL ---
     async function repairLegacyData(personnelList) {
         let fixed = false;
         for(let p of personnelList) {
@@ -400,15 +406,27 @@
         } else {
             let dbCosts = confSnap.data().costs || {};
             let updated = false;
+            
+            // Loop through default products to ensure all standard times exist
             Object.keys(window.DEFAULT_COSTS).forEach(key => {
-                if(!dbCosts[key]) { dbCosts[key] = window.DEFAULT_COSTS[key]; updated = true; }
-                else {
+                if(!dbCosts[key]) { 
+                    dbCosts[key] = window.DEFAULT_COSTS[key]; 
+                    updated = true; 
+                } else {
                     if(!dbCosts[key]["Engineering Design"] && dbCosts[key]["Full Design"]) {
                         dbCosts[key]["Engineering Design"] = dbCosts[key]["Full Design"]; updated = true;
                     } else if (!dbCosts[key]["Engineering Design"]) {
                         dbCosts[key]["Engineering Design"] = window.DEFAULT_COSTS[key]["Engineering Design"]; updated = true;
                     }
                     if(!dbCosts[key]["Product Testing"]) { dbCosts[key]["Product Testing"] = 2; updated = true; }
+                    
+                    // Patch existing databases with Quality 1-hour defaults if they don't exist
+                    QUAL_TRACKED_TASKS.forEach(qt => {
+                        if(dbCosts[key][qt] === undefined) {
+                            dbCosts[key][qt] = 1; 
+                            updated = true;
+                        }
+                    });
                 }
             });
             if(updated) await updateDoc(confRef, { costs: dbCosts });
@@ -417,7 +435,6 @@
         if(!(await getDoc(doc(db, "config", "samples"))).exists()) await setDoc(doc(db, "config", "samples"), { orders: [], targets: {} });
     }
 
-    // THE FIX: Move listeners into a function that runs AFTER login
     function startDataSync() {
         if (window.dataListenersAttached) return;
         window.dataListenersAttached = true;
@@ -459,7 +476,6 @@
             }
         });
         
-        // Hide loading indicator if it was visible
         document.getElementById('loadingOverlay').style.display = 'none';
     }
 
@@ -475,11 +491,13 @@
 
     const TOTAL_CAPACITY = 45;
     const BASELINE_HOURS = 27; 
-    const VP_THRESHOLD = 45;
     const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-    const ENG_TASK_TYPES = ["Comparison", "Engineering Design", "Product Testing", "Attribute Fill-in", "Customer Feedback", "Research Assignment", "Meeting", "Other"];
-    const QUAL_TASK_TYPES = ["NAPA Tech Line", "Warranty Claims", "Quarantine", "SOPs", "Quality Issues", "Time Studies", "Quality Alerts", "Recalls", "Meeting", "Other"];
+    // Centralized Lists (Manuals separated out to easily build dropdowns)
+    const ENG_TASK_TYPES = ["Comparison", "Engineering Design", "Product Testing", "Attribute Fill-in", "Customer Feedback", "Research Assignment"];
+    const QUAL_TASK_TYPES = ["NAPA Tech Line", "Warranty Claims", "Quarantine", "SOPs", "Quality Issues", "Time Studies", "Quality Alerts", "Recalls"];
+    const MANUAL_TASK_TYPES = ["Meeting", "Other", "PTO", "Holiday"];
+    
     const TASK_COLORS = { "Comparison":"#4285F4", "Engineering Design":"#34A853", "Product Testing":"#FBBC05", "PTO":"#9ca3af", "Holiday":"#9ca3af" };
 
     let currentWeekStart = getMonday(new Date());
@@ -499,7 +517,6 @@
         document.getElementById('qualInputs').innerHTML = buildInputs('qual');
         document.querySelectorAll('input[type="date"]').forEach(i => i.value = new Date().toISOString().split('T')[0]);
         
-        // AUTO-SET YEAR TO CURRENT YEAR
         document.getElementById('sumYear').value = new Date().getFullYear().toString();
         
         updateWeekDisplay();
@@ -612,34 +629,6 @@
         });
     }
 
-    // --- COMPLETED HISTORY VIEW ---
-    function renderCompleted() {
-        const tbody = document.querySelector('#masterHistoryTable tbody');
-        tbody.innerHTML = '';
-        if(!window.PERSONNEL) return;
-        
-        let allCompleted = [];
-        window.PERSONNEL.forEach(p => {
-            p.tasks.forEach(t => {
-                if(t.completed || t.isDone) {
-                    allCompleted.push({
-                        eng: p.name, type: t.type, cat: t.category,
-                        date: t.completedDate || t.end, 
-                        status: t.status || "Completed",
-                        pId: p.id, tId: t.id
-                    });
-                }
-            });
-        });
-
-        allCompleted.sort((a,b) => b.date - a.date);
-        allCompleted.forEach(t => {
-            const statusStyle = t.status === 'Late' ? 'background:#fee2e2; color:#dc2626;' : 'background:#dcfce7; color:#166534;';
-            tbody.innerHTML += `<tr><td>${t.eng}</td><td>${t.type}</td><td>${t.cat}</td><td>${t.date.toLocaleDateString()}</td><td><span class="status-pill" style="${statusStyle}">${t.status}</span></td><td><button class="icon-btn" onclick="updateTaskStatus(${t.pId}, ${t.tId}, 'reopen')">Undo</button></td></tr>`;
-        });
-        if(allCompleted.length === 0) tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:20px;">No completed history found.</td></tr>`;
-    }
-
     // --- ACTIONS ---
     window.addTask = async (prefix) => {
         const pId = document.getElementById(`${prefix}Select`).value;
@@ -652,9 +641,11 @@
         const manual = parseFloat(document.getElementById(`${prefix}Manual`).value);
 
         if(end < start) return alert("End < Start");
-        let cost = window.CATEGORY_COSTS[cat]?.[type] || 0;
         
-        if(['Other','Meeting','PTO','Holiday'].includes(type)) { 
+        let cost = window.CATEGORY_COSTS[cat]?.[type];
+        if (cost === undefined) cost = 1; // Default to 1 hour if totally missing from database
+        
+        if(MANUAL_TASK_TYPES.includes(type)) { 
             if(!manual) return alert("Enter total hours"); 
             cost = manual; 
         }
@@ -728,76 +719,7 @@
         if(document.getElementById('completedView').classList.contains('active')) renderCompleted();
     }
 
-    window.openBlock = (pId, tId) => { window.activeTaskForModal = {pId, tId}; document.getElementById('blockModal').style.display='block'; }
-    
-    window.confirmBlock = async () => {
-        const p = window.PERSONNEL.find(x => x.id === window.activeTaskForModal.pId);
-        const tasks = [...p.tasks];
-        const t = tasks.find(x => x.id === window.activeTaskForModal.tId);
-        t.blocked = true;
-        
-        const reason = document.getElementById('blockReason').value;
-        if(!t.history) t.history = [];
-        t.history.push({date: new Date(), action: `Blocked: ${reason || 'No reason'}`});
-        
-        await window.dbOps.updateDoc(window.dbOps.doc(window.db, "personnel", window.activeTaskForModal.pId.toString()), { tasks });
-        closeModal('blockModal');
-        document.getElementById('blockReason').value = ''; 
-    }
-
-    window.openHistory=(p,t)=>{
-        document.getElementById('historyLog').innerHTML=window.PERSONNEL.find(x=>x.id===p).tasks.find(x=>x.id===t).history.map(h=>`<div style="border-bottom:1px solid #eee;padding:5px;">${new Date(h.date.toDate?h.date.toDate():h.date).toLocaleString()}: ${h.action}</div>`).join('');
-        document.getElementById('historyModal').style.display='block';
-    }
-    window.openAssignModal=()=>{
-        const sel=document.getElementById('assignTarget');sel.innerHTML='';
-        window.PERSONNEL.forEach(p=>sel.add(new Option(p.name,p.id)));
-        document.getElementById('assignModal').style.display='block';
-    }
-    window.confirmAssign=async()=>{
-        const pId=document.getElementById('assignTarget').value;
-        const total=parseFloat(document.getElementById('calcResult').innerText);
-        const days=Math.max(1,Math.ceil(total/5));
-        const task={id:Date.now(), category:document.getElementById('calcCat').value, type:document.getElementById('calcType').value, qty:document.getElementById('calcQty').value, start:new Date(), end:addDays(new Date(), days), totalHours:total, dailyRate:total/days, costPerUnit:total/document.getElementById('calcQty').value, priority:'Medium', blocked:false, history:[{date:new Date(), action:"Calc Assign"}]};
-        await window.dbOps.updateDoc(window.dbOps.doc(window.db,"personnel",pId),{tasks:window.dbOps.arrayUnion(task)});
-        closeModal('assignModal');
-    }
-    
-    // NEW EDIT FUNCTIONS
-    window.openEdit = (pId, tId) => {
-        window.activeTaskForModal = {pId, tId};
-        const p = window.PERSONNEL.find(x => x.id === pId);
-        const t = p.tasks.find(x => x.id === tId);
-        document.getElementById('editStart').valueAsDate = t.start;
-        document.getElementById('editEnd').valueAsDate = t.end;
-        document.getElementById('editDetails').value = t.details || "";
-        document.getElementById('editModal').style.display = 'block';
-    }
-
-    window.saveEditTask = async () => {
-        const {pId, tId} = window.activeTaskForModal;
-        const p = window.PERSONNEL.find(x => x.id === pId);
-        const tasks = [...p.tasks];
-        const t = tasks.find(x => x.id === tId);
-
-        const newStart = parseDate(document.getElementById('editStart').value);
-        const newEnd = parseDate(document.getElementById('editEnd').value);
-        if (newEnd < newStart) return alert("End date cannot be before start date");
-
-        t.start = newStart;
-        t.end = newEnd;
-        t.details = document.getElementById('editDetails').value;
-
-        // Recalc Rate
-        const duration = (t.end - t.start) / (1000 * 60 * 60 * 24) + 1;
-        t.dailyRate = t.totalHours / Math.max(1, duration);
-        t.history.push({date: new Date(), action: "Edited Details/Date"});
-
-        await window.dbOps.updateDoc(window.dbOps.doc(window.db, "personnel", pId.toString()), { tasks });
-        closeModal('editModal');
-    }
-
-    // --- UI HELPER: Update Week Display ---
+    // --- TAB/VIEW HELPERS ---
     function updateWeekDisplay() {
         const endOfWeek = addDays(currentWeekStart, 4);
         document.querySelectorAll('.current-week-display').forEach(e => 
@@ -818,39 +740,136 @@
         document.getElementById(v+'View').classList.add('active');
         refreshActiveView();
     }
+
+    window.updateTaskTypes = (prefix) => {
+        const catEl = document.getElementById(`${prefix}Cat`);
+        if(!catEl) return;
+        
+        const sel = document.getElementById(`${prefix}Type`);
+        sel.innerHTML = '';
+        
+        if (prefix === 'eng') {
+            ENG_TASK_TYPES.forEach(t => sel.add(new Option(t, t)));
+            MANUAL_TASK_TYPES.forEach(t => sel.add(new Option(t, t)));
+        } else if (prefix === 'qual') {
+            QUAL_TASK_TYPES.forEach(t => sel.add(new Option(t, t)));
+            MANUAL_TASK_TYPES.forEach(t => sel.add(new Option(t, t)));
+        } else if (prefix === 'ts' || prefix === 'calc') {
+            // Calculator and Time Standards show ALL tracked standard tasks
+            [...ENG_TASK_TYPES, ...QUAL_TASK_TYPES].forEach(t => sel.add(new Option(t, t)));
+        }
+        
+        if(prefix !== 'ts') checkManual(prefix);
+    }
     
+    window.checkManual = (pre) => { 
+        const val = document.getElementById(`${pre}Type`).value;
+        document.getElementById(`${pre}ManualDiv`).style.display = MANUAL_TASK_TYPES.includes(val) ? 'block':'none'; 
+    }
+    
+    window.updateCalcTasks = () => { 
+        window.updateTaskTypes('calc'); // re-use the logic above
+        runCalc();
+    }
+    
+    window.runCalc = () => { 
+        const type = document.getElementById('calcType').value;
+        const cat = document.getElementById('calcCat').value;
+        let cost = window.CATEGORY_COSTS[cat]?.[type];
+        if (cost === undefined) cost = 1; // Fallback so it doesn't say "NaN"
+        
+        document.getElementById('calcResult').innerText = (cost * document.getElementById('calcQty').value).toFixed(1);
+    }
+
     function refreshActiveView() {
         if(document.getElementById('engineeringView').classList.contains('active')) renderDashboard();
         if(document.getElementById('qualityView').classList.contains('active')) renderDashboard();
         if(document.getElementById('completedView').classList.contains('active')) renderCompleted();
         
-        // SAMPLE TRACKING & EXEC SUMMARY: WAIT FOR CHARTS
         if (chartsLoaded && google.visualization && google.visualization.arrayToDataTable) {
             if(document.getElementById('samplesView').classList.contains('active')) renderSamples();
             if(document.getElementById('timestudyView').classList.contains('active')) renderTimeStudy();
             if(document.getElementById('summaryView').classList.contains('active')) renderSummary();
         } else {
-            // If charts aren't ready, just retry in 300ms. 
-            // Don't draw broken empty charts.
             setTimeout(refreshActiveView, 300);
         }
     }
 
-    // --- SAMPLES ---
+    // --- OTHER MODALS AND TABS (Included to ensure code is complete) ---
+    window.openBlock = (pId, tId) => { window.activeTaskForModal = {pId, tId}; document.getElementById('blockModal').style.display='block'; }
+    window.confirmBlock = async () => { /* ... existing block logic ... */ 
+        const p = window.PERSONNEL.find(x => x.id === window.activeTaskForModal.pId);
+        const tasks = [...p.tasks];
+        const t = tasks.find(x => x.id === window.activeTaskForModal.tId);
+        t.blocked = true;
+        const reason = document.getElementById('blockReason').value;
+        if(!t.history) t.history = [];
+        t.history.push({date: new Date(), action: `Blocked: ${reason || 'No reason'}`});
+        await window.dbOps.updateDoc(window.dbOps.doc(window.db, "personnel", window.activeTaskForModal.pId.toString()), { tasks });
+        closeModal('blockModal');
+        document.getElementById('blockReason').value = ''; 
+    }
+
+    window.openHistory=(p,t)=>{
+        document.getElementById('historyLog').innerHTML=window.PERSONNEL.find(x=>x.id===p).tasks.find(x=>x.id===t).history.map(h=>`<div style="border-bottom:1px solid #eee;padding:5px;">${new Date(h.date.toDate?h.date.toDate():h.date).toLocaleString()}: ${h.action}</div>`).join('');
+        document.getElementById('historyModal').style.display='block';
+    }
+    
+    window.openAssignModal=()=>{
+        const sel=document.getElementById('assignTarget');sel.innerHTML='';
+        window.PERSONNEL.forEach(p=>sel.add(new Option(p.name,p.id)));
+        document.getElementById('assignModal').style.display='block';
+    }
+    
+    window.confirmAssign=async()=>{
+        const pId=document.getElementById('assignTarget').value;
+        const total=parseFloat(document.getElementById('calcResult').innerText);
+        const days=Math.max(1,Math.ceil(total/5));
+        const task={id:Date.now(), category:document.getElementById('calcCat').value, type:document.getElementById('calcType').value, qty:document.getElementById('calcQty').value, start:new Date(), end:addDays(new Date(), days), totalHours:total, dailyRate:total/days, costPerUnit:total/document.getElementById('calcQty').value, priority:'Medium', blocked:false, history:[{date:new Date(), action:"Calc Assign"}]};
+        await window.dbOps.updateDoc(window.dbOps.doc(window.db,"personnel",pId),{tasks:window.dbOps.arrayUnion(task)});
+        closeModal('assignModal');
+    }
+
+    window.openEdit = (pId, tId) => {
+        window.activeTaskForModal = {pId, tId};
+        const p = window.PERSONNEL.find(x => x.id === pId);
+        const t = p.tasks.find(x => x.id === tId);
+        document.getElementById('editStart').valueAsDate = t.start;
+        document.getElementById('editEnd').valueAsDate = t.end;
+        document.getElementById('editDetails').value = t.details || "";
+        document.getElementById('editModal').style.display = 'block';
+    }
+
+    window.saveEditTask = async () => {
+        const {pId, tId} = window.activeTaskForModal;
+        const p = window.PERSONNEL.find(x => x.id === pId);
+        const tasks = [...p.tasks];
+        const t = tasks.find(x => x.id === tId);
+        const newStart = parseDate(document.getElementById('editStart').value);
+        const newEnd = parseDate(document.getElementById('editEnd').value);
+        if (newEnd < newStart) return alert("End date cannot be before start date");
+        t.start = newStart; t.end = newEnd; t.details = document.getElementById('editDetails').value;
+        const duration = (t.end - t.start) / (1000 * 60 * 60 * 24) + 1;
+        t.dailyRate = t.totalHours / Math.max(1, duration);
+        t.history.push({date: new Date(), action: "Edited Details/Date"});
+        await window.dbOps.updateDoc(window.dbOps.doc(window.db, "personnel", pId.toString()), { tasks });
+        closeModal('editModal');
+    }
+
+    window.closeModal=(id)=>document.getElementById(id).style.display='none';
+
+    // Samples
     function renderSamples() {
         if(!chartsLoaded) return;
         const grid = document.getElementById('samplesGrid');
         grid.innerHTML = '';
         const products = Object.keys(window.CATEGORY_COSTS).sort();
-        
         products.forEach(prod => {
             const div = document.createElement('div');
             div.className = 'sample-card';
             const target = window.SAMPLE_TARGETS[prod] || 20;
             const data = new google.visualization.DataTable();
-            data.addColumn('string', 'Month');
-            data.addColumn('number', 'Qty');
-            data.addColumn('number', 'Target');
+            data.addColumn('string', 'Month'); data.addColumn('number', 'Qty'); data.addColumn('number', 'Target');
             const rows = [];
             for(let i=0; i<12; i++) {
                 const sum = window.SAMPLE_ORDERS.reduce((acc, o) => {
@@ -860,20 +879,15 @@
                 rows.push([MONTHS[i], sum, parseInt(target)]);
             }
             data.addRows(rows);
-            // Fix ID generation to handle spaces
             const safeId = "chart_" + prod.replace(/[^a-zA-Z0-9]/g, '');
             div.innerHTML = `<div class="sample-header"><strong>${prod}</strong><div>Target: <input type="number" class="target-input" value="${target}" onchange="updateSampleTarget('${prod}', this.value)"></div></div><div id="${safeId}" class="centered-chart"></div>`;
             grid.appendChild(div);
-            // FIXED MARGINS FOR FIRST CHART
             new google.visualization.LineChart(div.lastElementChild).draw(data, {
-                legend: 'bottom', 
-                chartArea: { left: '10%', top: 20, width: '80%', height: '70%' }, 
-                hAxis: { textStyle: { fontSize: 10 } },
-                series: { 1: { lineDashStyle: [4, 4], color: 'red' } }
+                legend: 'bottom', chartArea: { left: '10%', top: 20, width: '80%', height: '70%' }, 
+                hAxis: { textStyle: { fontSize: 10 } }, series: { 1: { lineDashStyle: [4, 4], color: 'red' } }
             });
         });
     }
-
     window.updateSampleTarget = async (prod, val) => { window.SAMPLE_TARGETS[prod] = val; await window.dbOps.updateDoc(window.dbOps.doc(window.db, "config", "samples"), { targets: window.SAMPLE_TARGETS }); }
     window.addSampleOrder = async () => {
         const date = document.getElementById('sampDate').value;
@@ -883,7 +897,7 @@
         alert("Logged");
     }
 
-    // --- TIME STUDY ---
+    // Time Study
     function renderTimeStudy() {
         const cat = document.getElementById('tsCat').value;
         const type = document.getElementById('tsType').value;
@@ -891,7 +905,8 @@
         listDiv.innerHTML = '';
         if(!window.TASK_BREAKDOWNS[cat]) window.TASK_BREAKDOWNS[cat] = {};
         if(!window.TASK_BREAKDOWNS[cat][type]) {
-            const cost = window.CATEGORY_COSTS[cat]?.[type] || 0;
+            let cost = window.CATEGORY_COSTS[cat]?.[type];
+            if (cost === undefined) cost = 1; // Default to 1 hr if brand new
             window.TASK_BREAKDOWNS[cat][type] = [{name: "General", hours: cost}];
         }
         const subs = window.TASK_BREAKDOWNS[cat][type];
@@ -935,12 +950,11 @@
         alert("Updated");
     }
 
-    // --- SUMMARY ---
+    // Summary
     function renderSummary() {
         const year = parseInt(document.getElementById('sumYear').value);
         const monthFilter = document.getElementById('sumMonth').value;
         
-        // Reliability (Render Immediately)
         const relTable = document.getElementById('reliabilityTable');
         relTable.innerHTML = `<thead><tr><th>Name</th><th>On Time</th><th>Late</th><th>Score</th></tr></thead><tbody></tbody>`;
         window.PERSONNEL.forEach(p => {
@@ -951,7 +965,6 @@
             relTable.innerHTML += `<tr><td>${p.name}</td><td>${onTime}</td><td>${completed.length-onTime}</td><td><span class="status-pill ${bg}">${score}%</span></td></tr>`;
         });
 
-        // Top Time Consumers (Individual)
         let allTasks = [];
         window.PERSONNEL.forEach(p => {
             p.tasks.forEach(t => {
@@ -968,10 +981,8 @@
             allTasks.slice(0,5).map(t => `<tr><td>${t.eng}</td><td>${t.type}</td><td>${t.category}</td><td>${t.totalHours.toFixed(1)}</td></tr>`).join('')
         }</tbody>`;
 
-        // Efficiency Tables
         let htmlEff = `<thead><tr><th>Month</th>${window.PERSONNEL.map(p=>`<th>${p.name}</th>`).join('')}<th>Total</th></tr></thead><tbody>`;
         let htmlTot = `<thead><tr><th>Month</th>${window.PERSONNEL.map(p=>`<th>${p.name}</th>`).join('')}<th>Total</th></tr></thead><tbody>`;
-        
         MONTHS.forEach((mon, i) => {
             let rowEff = `<tr><td>${mon}</td>`, rowTot = `<tr><td>${mon}</td>`;
             let rowEffSum = 0, rowTotSum = 0;
@@ -979,10 +990,7 @@
                 let pHrs = 0;
                 p.tasks.forEach(t => {
                     let td = new Date(t.start);
-                    // Match YEAR and MONTH
-                    if(td.getFullYear()===year && td.getMonth()===i) {
-                        pHrs += Number(t.totalHours) || 0; // Robust sum
-                    }
+                    if(td.getFullYear()===year && td.getMonth()===i) { pHrs += Number(t.totalHours) || 0; }
                 });
                 let pEff = pHrs > 20 ? pHrs * 0.05 : 0;
                 rowEff += `<td>${pEff.toFixed(1)}</td>`; rowTot += `<td>${pHrs.toFixed(1)}</td>`;
@@ -994,7 +1002,6 @@
         document.getElementById('efficiencyTable').innerHTML = htmlEff + '</tbody>';
         document.getElementById('engSummaryTable').innerHTML = htmlTot + '</tbody>';
 
-        // Pie Charts (Render Safely if Charts Loaded)
         if(!chartsLoaded) return;
         const pieContainer = document.getElementById('pieChartsContainer');
         pieContainer.innerHTML = '';
@@ -1025,50 +1032,6 @@
         });
     }
 
-    window.closeModal=(id)=>document.getElementById(id).style.display='none';
-    
-    // UI HELPERS (Fixes Race Condition)
-    window.updateTaskTypes = (prefix) => {
-        const catEl = document.getElementById(`${prefix}Cat`);
-        if(!catEl) return;
-        
-        const cat = catEl.value;
-        const sel = document.getElementById(`${prefix}Type`);
-        sel.innerHTML = '';
-        const types = prefix === 'qual' ? QUAL_TASK_TYPES : ENG_TASK_TYPES;
-        
-        if(prefix === 'eng' || prefix === 'ts') {
-            if(window.CATEGORY_COSTS[cat]) {
-                Object.keys(window.CATEGORY_COSTS[cat]).forEach(t => sel.add(new Option(t, t)));
-            }
-            if(prefix === 'eng') {
-                sel.add(new Option("Meeting", "Meeting"));
-                sel.add(new Option("Other", "Other"));
-                sel.add(new Option("PTO", "PTO"));
-                sel.add(new Option("Holiday", "Holiday"));
-            }
-        } else {
-            types.forEach(t => sel.add(new Option(t, t)));
-            sel.add(new Option("PTO", "PTO"));
-            sel.add(new Option("Holiday", "Holiday"));
-        }
-        if(prefix !== 'ts') checkManual(prefix);
-    }
-    
-    window.checkManual = (pre) => { 
-        const val = document.getElementById(`${pre}Type`).value;
-        document.getElementById(`${pre}ManualDiv`).style.display = ['Other','Meeting','PTO','Holiday'].includes(val) ? 'block':'none'; 
-    }
-    
-    window.updateCalcTasks = () => { 
-        const sel = document.getElementById('calcType'); sel.innerHTML=''; 
-        const cat = document.getElementById('calcCat').value;
-        if(window.CATEGORY_COSTS[cat]) Object.keys(window.CATEGORY_COSTS[cat]).forEach(t => sel.add(new Option(t,t)));
-    }
-    window.runCalc = () => { 
-        const cost = window.CATEGORY_COSTS[document.getElementById('calcCat').value]?.[document.getElementById('calcType').value]||0;
-        document.getElementById('calcResult').innerText = (cost * document.getElementById('calcQty').value).toFixed(1);
-    }
 </script>
 </body>
 </html>
