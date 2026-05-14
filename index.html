@@ -265,35 +265,30 @@
         <button class="action-btn" onclick="saveEditTask()" style="width:100%;">Save Changes & Recalculate</button>
     </div>
 </div>
-
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, arrayUnion, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
     import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-    // -----------------------------------------------------------
-    // 🚨 PASTE YOUR FIREBASE CONFIG HERE 🚨
-    // -----------------------------------------------------------
+    // --- NEW FIREBASE CONFIG ---
     const firebaseConfig = {
-      apiKey: "AIzaSyDxQrOoHYKqPn1lJ52NW1XvDB05PpNGwKU",
-      authDomain: "engineering-task-tracker.firebaseapp.com",
-      projectId: "engineering-task-tracker",
-      storageBucket: "engineering-task-tracker.firebasestorage.app",
-      messagingSenderId: "881070104494",
-      appId: "1:881070104494:web:1ded65fe520f3e5817723f",
-      measurementId: "G-5TF7EYQ4YC"
+        apiKey: "AIzaSyDvMJrOOxGVIKBdtwkLTIxkAoEp7PNSrpQ",
+        authDomain: "life-planner-602d2.firebaseapp.com",
+        projectId: "life-planner-602d2",
+        storageBucket: "life-planner-602d2.firebasestorage.app",
+        messagingSenderId: "13038862081",
+        appId: "1:13038862081:web:69270063c60e996ddea500",
+        measurementId: "G-1M846RQJ4P"
     };
 
-    let app, db, auth;
-    try {
-        app = initializeApp(firebaseConfig);
-        db = getFirestore(app);
-        auth = getAuth(app);
-        window.db = db;
-        window.dbOps = { doc, updateDoc, arrayUnion, setDoc, getDoc, onSnapshot };
-    } catch (error) {
-        alert("Firebase Connection Failed: " + error.message);
-    }
+    // --- INITIALIZE SYSTEM ---
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+    
+    // Global accessibility for the app logic
+    window.db = db;
+    window.dbOps = { doc, updateDoc, arrayUnion, setDoc, getDoc, onSnapshot };
 
     // --- AUTHENTICATION LOGIC ---
     window.handleLogin = () => {
@@ -306,22 +301,9 @@
                 errBox.innerText = "Login Failed: " + error.message;
             });
     };
-const firebaseConfig = {
-  apiKey: "AIzaSyDvMJrOOxGVIKBdtwkLTIxkAoEp7PNSrpQ",
-  authDomain: "life-planner-602d2.firebaseapp.com",
-  projectId: "life-planner-602d2",
-  storageBucket: "life-planner-602d2.firebasestorage.app",
-  messagingSenderId: "13038862081",
-  appId: "1:13038862081:web:69270063c60e996ddea500",
-  measurementId: "G-1M846RQJ4P"
-};
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app); // Add this
-const auth = getAuth(app);    // Add this
-window.db = db;
-window.dbOps = { doc, updateDoc, arrayUnion, setDoc, getDoc, onSnapshot };
+    window.handleLogout = () => {
+        signOut(auth).then(() => location.reload());
     };
 
     // Watch for login status
