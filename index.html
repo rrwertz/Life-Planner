@@ -306,9 +306,22 @@
                 errBox.innerText = "Login Failed: " + error.message;
             });
     };
+const firebaseConfig = {
+  apiKey: "AIzaSyDvMJrOOxGVIKBdtwkLTIxkAoEp7PNSrpQ",
+  authDomain: "life-planner-602d2.firebaseapp.com",
+  projectId: "life-planner-602d2",
+  storageBucket: "life-planner-602d2.firebasestorage.app",
+  messagingSenderId: "13038862081",
+  appId: "1:13038862081:web:69270063c60e996ddea500",
+  measurementId: "G-1M846RQJ4P"
+};
 
-    window.handleLogout = () => {
-        signOut(auth).then(() => location.reload());
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app); // Add this
+const auth = getAuth(app);    // Add this
+window.db = db;
+window.dbOps = { doc, updateDoc, arrayUnion, setDoc, getDoc, onSnapshot };
     };
 
     // Watch for login status
