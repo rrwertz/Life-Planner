@@ -120,7 +120,7 @@
 <div class="container" id="mainApp">
     <header>
         <h1>Dept. Resource & Quality Planner</h1>
-        <p>Engineering (Max, Lee, Jordon, Tim) • Quality (Ron, Glen)</p>
+<p>Life Planner for Glau & Ron</p>
         <button class="logout-btn" onclick="handleLogout()">Sign Out</button>
     </header>
 
@@ -325,12 +325,8 @@
     window.activeTaskForModal = null; 
     
     window.PERSONNEL = [
-        {id:0, name:"Maxwell", role:"Eng 1", dept:"eng", tasks:[]}, 
-        {id:1, name:"Lee", role:"Eng 2", dept:"eng", tasks:[]},
-        {id:2, name:"Jordon", role:"Eng 3", dept:"eng", tasks:[]}, 
-        {id:3, name:"Tim", role:"Lab Tech", dept:"eng", tasks:[]},
-        {id:4, name:"Ron", role:"Quality Mgr", dept:"qual", tasks:[]}, 
-        {id:5, name:"Glen", role:"Quality Tech", dept:"qual", tasks:[]}
+        {id:0, name:"Glau", role:"Personal", dept:"eng", tasks:[]}, 
+        {id:1, name:"Ron", role:"Personal", dept:"eng", tasks:[]}
     ];
     window.SAMPLE_ORDERS = [];
   
@@ -388,9 +384,8 @@
     async function initDB() {
         if(!db) return;
         const personnel = [
-            {id:0, name:"Maxwell", role:"Eng 1", dept:"eng"}, {id:1, name:"Lee", role:"Eng 2", dept:"eng"},
-            {id:2, name:"Jordon", role:"Eng 3", dept:"eng"}, {id:3, name:"Tim", role:"Lab Tech", dept:"eng"},
-            {id:4, name:"Ron", role:"Quality Mgr", dept:"qual"}, {id:5, name:"Glen", role:"Quality Tech", dept:"qual"}
+            {id:0, name:"Glau", role:"Personal", dept:"eng"}, 
+            {id:1, name:"Ron", role:"Personal", dept:"eng"}
         ];
         for(let p of personnel) {
             const ref = doc(db, "personnel", p.id.toString());
