@@ -265,13 +265,12 @@
         <button class="action-btn" onclick="saveEditTask()" style="width:100%;">Save Changes & Recalculate</button>
     </div>
 </div>
-
-   <script type="module">
+<script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, arrayUnion, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
     import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-    // --- NEW FIREBASE CONFIG ---
+    // --- NEW FIREBASE CONFIG (Life-Planner) ---
     const firebaseConfig = {
         apiKey: "AIzaSyDvMJrOOxGVIKBdtwkLTIxkAoEp7PNSrpQ",
         authDomain: "life-planner-602d2.firebaseapp.com",
@@ -295,6 +294,8 @@
     window.handleLogin = () => {
         const email = document.getElementById('loginEmail').value;
         const pass = document.getElementById('loginPass').value;
+        if (!email || !pass) return alert("Please enter both email and password");
+
         signInWithEmailAndPassword(auth, email, pass)
             .catch((error) => {
                 const errBox = document.getElementById('loginError');
@@ -312,7 +313,8 @@
         if (user) {
             document.getElementById('loginOverlay').style.display = 'none';
             document.getElementById('mainApp').style.display = 'block';
-            initDB().then(() => startDataSync());
+            // These functions are defined later in your file
+            if (typeof initDB === 'function') initDB().then(() => startDataSync());
         } else {
             document.getElementById('loginOverlay').style.display = 'flex';
             document.getElementById('mainApp').style.display = 'none';
@@ -330,6 +332,8 @@
         {id:4, name:"Ron", role:"Quality Mgr", dept:"qual", tasks:[]}, 
         {id:5, name:"Glen", role:"Quality Tech", dept:"qual", tasks:[]}
     ];
+    window.SAMPLE_ORDERS = [];
+  
     window.SAMPLE_ORDERS = []; 
     // Core Engineering Standard Times
     window.DEFAULT_COSTS = {
