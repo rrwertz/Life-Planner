@@ -381,7 +381,7 @@
         }
     }
 
-    async function initDB() {
+  async function initDB() {
         if(!db) return;
         const personnel = [
             {id:0, name:"Glau", role:"Personal", dept:"eng"}, 
@@ -391,7 +391,7 @@
             const ref = doc(db, "personnel", p.id.toString());
             if(!(await getDoc(ref)).exists()) await setDoc(ref, {info: p, tasks: []});
         }
-        
+               
         const confRef = doc(db, "config", "standards");
         const confSnap = await getDoc(confRef);
         
